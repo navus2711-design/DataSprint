@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional 3D Shape Studio - Advanced Modeling & Collaboration</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Three.js Core -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Cannon.js Physics -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.20.0/cannon.min.js"></script>
+    <!-- Web Speech API for voice commands -->
+    <script>
+        // OrbitControls implementation
+        THREE.OrbitControls = function ( object, domElement ) {
+            this.object = object;
+            this.domElement = ( domElement !== undefined ) ? domElement : document;
+            this.enabled = true;
+            this.target = new THREE.Vector3();
+            this.minDistance = 0;
+            this.maxDistance = Infinity;
+            this.minPolarAngle = 0;
+            this.maxPolarAngle = Math.PI;
+            this.minAzimuthAngle = - Infinity;
+            this.maxAzimuthAngle = Infinity;
+            this.enableDamping = false;
+            this.dampingFactor = 0.25;
+            this.enableZoom = true;
+            this.zoomSpeed = 1.0;
+            this.enableRotate = true;
+            this.rotateSpeed = 1.0;
+            this.enablePan = true;
+            this.panSpeed = 1.0;
+            this.screenSpacePanning = false;
+            this.keyPanSpeed = 7.0;
+            this.autoRotate = false;
+            this.autoRotateSpeed = 2.0;
+            this.keys = { LEFT: 37, UP: 38, RIGHT: 39, BOTTOM: 40 };
+            this.mouseButtons = { LEFT: THREE.MOUSE.LEFT, MIDDLE: THREE.MOUSE.MIDDLE, RIGHT: THREE.MOUSE.RIGHT };
+            
+            var scope = this;
+            var spherical = new THREE.Spherical();
+            var sphericalDelta = new THREE.Spherical();
+            var scale = 1;
+            var panOffset = new THREE.Vector3();
+            var zoomChanged = false;
+            
+            this.update = function() {
+                var position = scope.object.position;
+                var offset = position.clone().sub( scope.target );
+                spherical.setFromVector3( offset );
+                if ( scope.enableDamping === true ) {
+                    spherical.theta += sphericalDelta.theta * scope.dampingFactor;
+                    spherical.phi += sphericalDelta.phi * scope.dampingFactor;
+                    sphericalDelta.theta *= ( 1 - scope.dampingFactor );
+                    sphericalDelta.phi *= ( 1 - scope.dampingFactor );
+                } else {
+                    spherical.theta += sphericalDelta.theta;
+                    spherical.phi += sphericalDelta.phi;
+                    sphericalDelta.set( 0, 0, 0 );
+                }
+                spherical.radius *= scale;
+                spherical.radius = Math.max( scope.minDistance, Math.min( scope.maxDistance, spherical.radius ) );
+                scope.target.add( panOffset );
+                offset.setFromSpherical( spherical );
+                position.copy( scope.target ).add( offset );
+                scope.object.lookAt( scope.target );
+                if ( scope.enableDamping === true ) {
+                    panOffset.multiplyScalar( scope.dampingFactor );
+                } else {
+                    panOffset.set( 0, 0, 0 );
+                }
+                scale = 1;
+                return false;
+            };
+            
+            var rotateStart = new THREE.Vector2();
+            var rotateEnd = new THREE.Vector2();
+            var rotateDelta = new THREE.Vector2();
+            
+            function onMouseDown( event ) {
+                if ( scope.enabled === false ) return;
+                rotateStart.set( event.clientX, event.clientY );
+            }
+            
+            function onMouseMove( event ) {
+                if ( scope.enabled === false ) return;
+                rotateEnd.set( event.clientX, event.clientY );
+                rotateDelta.subVectors( rotateEnd, rotateStart );
+                var element = scope.domElement === document ? scope.domElement.body : scope.domElement;
+                sphericalDelta.theta -= 2 * Math.PI * rotateDelta.x / element.clientWidth * scope.rotateSpeed;
+                sphericalDelta.phi -= 2 * Math.PI * rotateDelta.y / element.clientHeight * scope.rotateSpeed;
+                rotateStart.copy( rotateEnd );
+                scope.update();
+            }
+            
+            function onMouseUp( event ) {}
+            
+            function onMouseWheel( event ) {
+                if ( scope.enabled === false || scope.enableZoom === false ) return;
+                if ( event.deltaY < 0 ) {
+                    scale /= 1.05;
+                } else if ( event.deltaY > 0 ) {
+                    scale *= 1.05;
+                }
+                scope.update();
+            }
+            
+            this.domElement.addEventListener( 'mousedown', onMouseDown, false );
+            this.domElement.addEventListener( 'mousemove', onMouseMove, false );
+            this.domElement.addEventListener( 'mouseup', onMouseUp, false );
+            this.domElement.addEventListener( 'wheel', onMouseWheel, false );
+        };
+    </script>
+</head>
+<body>
+    <!-- Professional Welcome Screen -->
+    <div id="landing" class="screen active">
+        <div class="container">
+            <div class="hero-section">
+                <h1>Professional 3D Shape Studio</h1>
+                <p class="hero-subtitle">Advanced Modeling, Collaboration & Manufacturing</p>
+                
+                <div class="workflow-selection">
+                    <h3>Choose Your Workflow</h3>
+                    <div class="workflow-grid">
+                        <button class="workflow-btn" data-workflow="hobbyist">
+                            <span class="workflow-icon">🎨</span>
+                            <span class="workflow-title">Hobbyist</span>
+                            <span class="workflow-desc">Creative exploration & learning</span>
+                        </button>
+                        <button class="workflow-btn" data-workflow="professional">
+                            <span class="workflow-icon">🏭</span>
+                            <span class="workflow-title">Professional</span>
+                            <span class="workflow-desc">CAD, manufacturing & engineering</span>
+                        </button>
+                        <button class="workflow-btn" data-workflow="educational">
+                            <span class="workflow-icon">🎓</span>
+                            <span class="workflow-title">Educational</span>
+                            <span class="workflow-desc">Teaching & training environment</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="features-preview">
+                    <div class="feature-highlight">
+                        <span class="highlight-icon">📐</span>
+                        <span>50+ Professional Shapes</span>
+                    </div>
+                    <div class="feature-highlight">
+                        <span class="highlight-icon">🔧</span>
+                        <span>Advanced Tools & Operations</span>
+                    </div>
+                    <div class="feature-highlight">
+                        <span class="highlight-icon">🎤</span>
+                        <span>Voice Commands</span>
+                    </div>
+                    <div class="feature-highlight">
+                        <span class="highlight-icon">🤝</span>
+                        <span>Real-time Collaboration</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shape Library Tour -->
+    <div id="shape-library" class="screen">
+        <div class="container">
+            <div class="library-header">
+                <h2>Massive Shape Library</h2>
+                <p>Explore 50+ professional shapes across multiple categories</p>
+                <div class="library-controls">
+                    <input type="text" class="form-control search-input" id="shape-search" placeholder="Search shapes...">
+                    <select class="form-control category-filter" id="category-filter">
+                        <option value="all">All Categories</option>
+                        <option value="basic">Basic Geometries</option>
+                        <option value="platonic">Platonic Solids</option>
+                        <option value="prisms">Prisms & Pyramids</option>
+                        <option value="architectural">Architectural</option>
+                        <option value="organic">Organic & Natural</option>
+                        <option value="mechanical">Mechanical</option>
+                        <option value="mathematical">Mathematical</option>
+                        <option value="artistic">Artistic</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="shape-categories">
+                <div class="category-section" id="shape-grid">
+                    <!-- Shapes will be populated by JavaScript -->
+                </div>
+            </div>
+            
+            <div class="library-actions">
+                <button class="btn btn--outline" id="back-to-welcome">← Back</button>
+                <button class="btn btn--primary btn--lg" id="continue-to-tools">Continue to Tools →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tool Mastery Screen -->
+    <div id="tool-mastery" class="screen">
+        <div class="container">
+            <div class="mastery-header">
+                <h2>Professional Tool Mastery</h2>
+                <p>Learn advanced modeling techniques with hands-on tutorials</p>
+            </div>
+            
+            <div class="tool-categories">
+                <div class="tool-category">
+                    <h3>Boolean Operations</h3>
+                    <div class="tool-grid">
+                        <div class="tool-card" data-tool="boolean-union">
+                            <span class="tool-icon">⚡</span>
+                            <h4>Union</h4>
+                            <p>Combine objects seamlessly</p>
+                            <span class="hotkey">Ctrl+U</span>
+                        </div>
+                        <div class="tool-card" data-tool="boolean-difference">
+                            <span class="tool-icon">➖</span>
+                            <h4>Difference</h4>
+                            <p>Subtract one from another</p>
+                            <span class="hotkey">Ctrl+D</span>
+                        </div>
+                        <div class="tool-card" data-tool="boolean-intersection">
+                            <span class="tool-icon">⚬</span>
+                            <h4>Intersection</h4>
+                            <p>Keep only overlaps</p>
+                            <span class="hotkey">Ctrl+I</span>
+                        </div>
+                        <div class="tool-card" data-tool="boolean-xor">
+                            <span class="tool-icon">⊕</span>
+                            <h4>XOR</h4>
+                            <p>Exclude overlapping regions</p>
+                            <span class="hotkey">Ctrl+X</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tool-category">
+                    <h3>Welding & Joining</h3>
+                    <div class="tool-grid">
+                        <div class="tool-card" data-tool="edge-weld">
+                            <span class="tool-icon">🔥</span>
+                            <h4>Edge Weld</h4>
+                            <p>Join edges smoothly</p>
+                            <span class="hotkey">W</span>
+                        </div>
+                        <div class="tool-card" data-tool="surface-weld">
+                            <span class="tool-icon">🌡️</span>
+                            <h4>Surface Weld</h4>
+                            <p>Blend surfaces together</p>
+                            <span class="hotkey">Shift+W</span>
+                        </div>
+                        <div class="tool-card" data-tool="point-weld">
+                            <span class="tool-icon">📍</span>
+                            <h4>Point Weld</h4>
+                            <p>Connect vertices</p>
+                            <span class="hotkey">Ctrl+W</span>
+                        </div>
+                        <div class="tool-card" data-tool="auto-weld">
+                            <span class="tool-icon">⚡</span>
+                            <h4>Auto Weld</h4>
+                            <p>Smart joining</p>
+                            <span class="hotkey">Alt+W</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tool-category">
+                    <h3>Assembly & Bolting</h3>
+                    <div class="tool-grid">
+                        <div class="tool-card" data-tool="insert-bolt">
+                            <span class="tool-icon">🔩</span>
+                            <h4>Insert Bolt</h4>
+                            <p>Add realistic bolts</p>
+                            <span class="hotkey">B</span>
+                        </div>
+                        <div class="tool-card" data-tool="add-nut">
+                            <span class="tool-icon">🔸</span>
+                            <h4>Add Nut</h4>
+                            <p>Complete fastening</p>
+                            <span class="hotkey">N</span>
+                        </div>
+                        <div class="tool-card" data-tool="torque-tool">
+                            <span class="tool-icon">🔧</span>
+                            <h4>Torque</h4>
+                            <p>Tighten with physics</p>
+                            <span class="hotkey">T</span>
+                        </div>
+                        <div class="tool-card" data-tool="exploded-view">
+                            <span class="tool-icon">💥</span>
+                            <h4>Exploded View</h4>
+                            <p>Show assembly breakdown</p>
+                            <span class="hotkey">E</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tool-category">
+                    <h3>Dissection & Cutting</h3>
+                    <div class="tool-grid">
+                        <div class="tool-card" data-tool="plane-cut">
+                            <span class="tool-icon">✂️</span>
+                            <h4>Plane Cut</h4>
+                            <p>Slice with planes</p>
+                            <span class="hotkey">C</span>
+                        </div>
+                        <div class="tool-card" data-tool="curved-cut">
+                            <span class="tool-icon">🪚</span>
+                            <h4>Curved Cut</h4>
+                            <p>Cut along curves</p>
+                            <span class="hotkey">Shift+C</span>
+                        </div>
+                        <div class="tool-card" data-tool="hollow-out">
+                            <span class="tool-icon">⭕</span>
+                            <h4>Hollow Out</h4>
+                            <p>Remove internal material</p>
+                            <span class="hotkey">H</span>
+                        </div>
+                        <div class="tool-card" data-tool="cross-section">
+                            <span class="tool-icon">📊</span>
+                            <h4>Cross Section</h4>
+                            <p>Internal view</p>
+                            <span class="hotkey">Ctrl+C</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mastery-actions">
+                <button class="btn btn--outline" id="back-to-library">← Back to Library</button>
+                <button class="btn btn--primary btn--lg" id="enter-workshop">Enter Workshop →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Advanced Workshop -->
+    <div id="workshop" class="screen">
+        <!-- Professional Toolbar -->
+        <div class="pro-toolbar">
+            <div class="toolbar-section">
+                <button class="btn btn--outline btn--sm" id="home-btn">🏠</button>
+                <button class="btn btn--outline btn--sm" id="undo-btn" title="Undo (Ctrl+Z)">↶</button>
+                <button class="btn btn--outline btn--sm" id="redo-btn" title="Redo (Ctrl+Y)">↷</button>
+                <span class="toolbar-separator"></span>
+                <button class="btn btn--secondary btn--sm" id="voice-toggle" title="Voice Commands">🎤</button>
+                <span id="voice-status" class="voice-indicator">Listening...</span>
+            </div>
+            
+            <div class="toolbar-section">
+                <span class="toolbar-label">Project: </span>
+                <span class="project-name">Advanced Assembly</span>
+                <button class="btn btn--secondary btn--sm" id="save-project">💾 Save</button>
+                <button class="btn btn--outline btn--sm" id="load-project">📁 Load</button>
+            </div>
+            
+            <div class="toolbar-section">
+                <button class="btn btn--outline btn--sm" id="ar-mode">AR</button>
+                <button class="btn btn--outline btn--sm" id="vr-mode">VR</button>
+                <button class="btn btn--primary btn--sm" id="export-model">Export</button>
+            </div>
+        </div>
+
+        <!-- Main Workshop Layout -->
+        <div class="workshop-layout">
+            <!-- Advanced Tools Panel -->
+            <div class="tools-panel">
+                <div class="panel-tabs">
+                    <button class="tab-btn active" data-tab="shapes">Shapes</button>
+                    <button class="tab-btn" data-tab="boolean">Boolean</button>
+                    <button class="tab-btn" data-tab="weld">Weld</button>
+                    <button class="tab-btn" data-tab="assembly">Assembly</button>
+                    <button class="tab-btn" data-tab="cut">Cut</button>
+                    <button class="tab-btn" data-tab="sculpt">Sculpt</button>
+                </div>
+                
+                <div class="tab-content-panel">
+                    <!-- Shapes Tab -->
+                    <div id="shapes-tab" class="tool-tab active">
+                        <div class="tool-section">
+                            <h4>Quick Shapes</h4>
+                            <div class="quick-shapes-grid" id="quick-shapes">
+                                <!-- Populated by JavaScript -->
+                            </div>
+                        </div>
+                        <div class="tool-section">
+                            <h4>Categories</h4>
+                            <select class="form-control" id="shape-category-select">
+                                <option value="basic">Basic Geometries</option>
+                                <option value="platonic">Platonic Solids</option>
+                                <option value="mechanical">Mechanical</option>
+                                <option value="architectural">Architectural</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Boolean Tab -->
+                    <div id="boolean-tab" class="tool-tab">
+                        <div class="tool-section">
+                            <h4>Boolean Operations</h4>
+                            <button class="btn btn--primary btn--full-width" id="union-btn">⚡ Union</button>
+                            <button class="btn btn--primary btn--full-width" id="difference-btn">➖ Difference</button>
+                            <button class="btn btn--primary btn--full-width" id="intersection-btn">⚬ Intersection</button>
+                            <button class="btn btn--primary btn--full-width" id="xor-btn">⊕ XOR</button>
+                        </div>
+                        <div class="tool-section">
+                            <h4>Live Preview</h4>
+                            <div class="form-group">
+                                <label class="form-label">Show Preview</label>
+                                <input type="checkbox" class="form-control" id="boolean-preview" checked>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Welding Tab -->
+                    <div id="weld-tab" class="tool-tab">
+                        <div class="tool-section">
+                            <h4>Welding Tools</h4>
+                            <button class="btn btn--primary btn--full-width" id="edge-weld-btn">🔥 Edge Weld</button>
+                            <button class="btn btn--primary btn--full-width" id="surface-weld-btn">🌡️ Surface Weld</button>
+                            <button class="btn btn--primary btn--full-width" id="point-weld-btn">📍 Point Weld</button>
+                            <button class="btn btn--primary btn--full-width" id="auto-weld-btn">⚡ Auto Weld</button>
+                        </div>
+                        <div class="tool-section">
+                            <h4>Weld Strength</h4>
+                            <div class="form-group">
+                                <label class="form-label">Strength</label>
+                                <input type="range" class="form-control" min="0" max="100" value="75" id="weld-strength">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Heat Effects</label>
+                                <input type="checkbox" class="form-control" id="heat-effects" checked>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Assembly Tab -->
+                    <div id="assembly-tab" class="tool-tab">
+                        <div class="tool-section">
+                            <h4>Mechanical Assembly</h4>
+                            <button class="btn btn--primary btn--full-width" id="insert-bolt-btn">🔩 Insert Bolt</button>
+                            <button class="btn btn--primary btn--full-width" id="add-nut-btn">🔸 Add Nut</button>
+                            <button class="btn btn--primary btn--full-width" id="add-washer-btn">⚪ Add Washer</button>
+                            <button class="btn btn--primary btn--full-width" id="torque-btn">🔧 Torque Tool</button>
+                        </div>
+                        <div class="tool-section">
+                            <h4>Assembly View</h4>
+                            <button class="btn btn--secondary btn--full-width" id="exploded-view-btn">💥 Exploded View</button>
+                            <button class="btn btn--secondary btn--full-width" id="assembly-constraints-btn">🔗 Constraints</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Cutting Tab -->
+                    <div id="cut-tab" class="tool-tab">
+                        <div class="tool-section">
+                            <h4>Cutting Tools</h4>
+                            <button class="btn btn--primary btn--full-width" id="plane-cut-btn">✂️ Plane Cut</button>
+                            <button class="btn btn--primary btn--full-width" id="curved-cut-btn">🪚 Curved Cut</button>
+                            <button class="btn btn--primary btn--full-width" id="multi-section-btn">🔀 Multi-Section</button>
+                            <button class="btn btn--primary btn--full-width" id="hollow-out-btn">⭕ Hollow Out</button>
+                        </div>
+                        <div class="tool-section">
+                            <h4>Precision</h4>
+                            <div class="form-group">
+                                <label class="form-label">Cut Preview</label>
+                                <input type="checkbox" class="form-control" id="cut-preview" checked>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Laser Effects</label>
+                                <input type="checkbox" class="form-control" id="laser-effects">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Sculpting Tab -->
+                    <div id="sculpt-tab" class="tool-tab">
+                        <div class="tool-section">
+                            <h4>Sculpting Tools</h4>
+                            <button class="btn btn--primary btn--full-width" id="push-pull-btn">👆 Push/Pull</button>
+                            <button class="btn btn--primary btn--full-width" id="smooth-btn">〰️ Smooth</button>
+                            <button class="btn btn--primary btn--full-width" id="inflate-btn">🎈 Inflate</button>
+                            <button class="btn btn--primary btn--full-width" id="twist-btn">🌀 Twist</button>
+                        </div>
+                        <div class="tool-section">
+                            <h4>Brush Settings</h4>
+                            <div class="form-group">
+                                <label class="form-label">Brush Size</label>
+                                <input type="range" class="form-control" min="1" max="50" value="10" id="brush-size">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Strength</label>
+                                <input type="range" class="form-control" min="0" max="100" value="50" id="sculpt-strength">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3D Viewport -->
+            <div class="viewport-container">
+                <canvas id="canvas3d"></canvas>
+                <div class="viewport-overlay">
+                    <div class="viewport-controls">
+                        <button class="viewport-btn active" id="perspective-view">Perspective</button>
+                        <button class="viewport-btn" id="orthographic-view">Orthographic</button>
+                        <button class="viewport-btn" id="wireframe-view">Wireframe</button>
+                    </div>
+                    <div class="physics-panel">
+                        <button class="btn btn--secondary btn--sm" id="physics-toggle">⚡ Physics</button>
+                        <button class="btn btn--outline btn--sm" id="gravity-toggle">🌍 Gravity</button>
+                        <button class="btn btn--outline btn--sm" id="reset-physics">🔄 Reset</button>
+                    </div>
+                    <div class="performance-panel">
+                        <span class="performance-metric">FPS: <span id="fps-counter">60</span></span>
+                        <span class="performance-metric">Objects: <span id="object-counter">0</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Properties & Materials Panel -->
+            <div class="properties-panel">
+                <div class="panel-tabs">
+                    <button class="tab-btn active" data-tab="properties">Properties</button>
+                    <button class="tab-btn" data-tab="materials">Materials</button>
+                    <button class="tab-btn" data-tab="physics">Physics</button>
+                </div>
+                
+                <div class="tab-content-panel">
+                    <!-- Properties Tab -->
+                    <div id="properties-tab" class="prop-tab active">
+                        <div id="object-properties">
+                            <p class="no-selection">Select objects to edit properties</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Materials Tab -->
+                    <div id="materials-tab" class="prop-tab">
+                        <div class="material-section">
+                            <h4>Material Type</h4>
+                            <select class="form-control" id="material-type">
+                                <option value="steel">Steel</option>
+                                <option value="aluminum">Aluminum</option>
+                                <option value="plastic">Plastic</option>
+                                <option value="wood">Wood</option>
+                                <option value="glass">Glass</option>
+                                <option value="rubber">Rubber</option>
+                                <option value="concrete">Concrete</option>
+                                <option value="copper">Copper</option>
+                            </select>
+                        </div>
+                        
+                        <div class="material-section">
+                            <h4>Appearance</h4>
+                            <div class="form-group">
+                                <label class="form-label">Color</label>
+                                <input type="color" class="form-control" id="material-color" value="#1FB8CD">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Metallic</label>
+                                <input type="range" class="form-control" min="0" max="100" value="0" id="metallic-slider">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Roughness</label>
+                                <input type="range" class="form-control" min="0" max="100" value="70" id="roughness-slider">
+                            </div>
+                        </div>
+                        
+                        <div class="material-section">
+                            <h4>Advanced</h4>
+                            <button class="btn btn--outline btn--full-width" id="material-paint-btn">🎨 Paint Material</button>
+                            <button class="btn btn--outline btn--full-width" id="texture-project-btn">🖼️ Project Texture</button>
+                            <button class="btn btn--outline btn--full-width" id="weathering-btn">🌧️ Add Weathering</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Physics Tab -->
+                    <div id="physics-tab" class="prop-tab">
+                        <div class="physics-section">
+                            <h4>Physical Properties</h4>
+                            <div class="form-group">
+                                <label class="form-label">Mass (kg)</label>
+                                <input type="number" class="form-control" value="1" id="object-mass" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Friction</label>
+                                <input type="range" class="form-control" min="0" max="100" value="50" id="friction-slider">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Bounciness</label>
+                                <input type="range" class="form-control" min="0" max="100" value="30" id="bounce-slider">
+                            </div>
+                        </div>
+                        
+                        <div class="physics-section">
+                            <h4>Simulation</h4>
+                            <button class="btn btn--secondary btn--full-width" id="rigid-body-btn">📦 Rigid Body</button>
+                            <button class="btn btn--secondary btn--full-width" id="soft-body-btn">🧽 Soft Body</button>
+                            <button class="btn btn--secondary btn--full-width" id="fluid-sim-btn">💧 Fluid Sim</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Voice Command Display -->
+        <div id="voice-command-display" class="voice-display hidden">
+            <div class="voice-content">
+                <div class="voice-icon">🎤</div>
+                <div class="voice-text">Listening for commands...</div>
+                <div class="voice-suggestions">
+                    <span>Try: "Cut this in half", "Weld these together", "Add red material"</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Collaborative Studio -->
+    <div id="collaboration" class="screen">
+        <div class="collab-header">
+            <h2>Collaborative Studio</h2>
+            <div class="room-info">
+                <span class="room-code">Room: STUDIO-3D-PRO</span>
+                <button class="btn btn--secondary btn--sm" id="invite-users">Invite Collaborators</button>
+            </div>
+        </div>
+        
+        <div class="collab-layout">
+            <div class="users-panel">
+                <h4>Active Users</h4>
+                <div class="user-list" id="active-users">
+                    <div class="user-item">
+                        <div class="user-avatar">👤</div>
+                        <div class="user-info">
+                            <span class="username">You</span>
+                            <span class="user-role">Host</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="collab-viewport">
+                <canvas id="collab-canvas"></canvas>
+                <div class="user-cursors" id="user-cursors">
+                    <!-- Other users' cursors will appear here -->
+                </div>
+            </div>
+            
+            <div class="communication-panel">
+                <div class="comm-tabs">
+                    <button class="tab-btn active" data-tab="chat">Chat</button>
+                    <button class="tab-btn" data-tab="voice">Voice</button>
+                    <button class="tab-btn" data-tab="video">Video</button>
+                </div>
+                
+                <div class="comm-content">
+                    <div id="chat-content" class="comm-tab active">
+                        <div class="chat-messages" id="collab-messages"></div>
+                        <div class="chat-input">
+                            <input type="text" class="form-control" id="collab-chat-input" placeholder="Type message...">
+                            <button class="btn btn--primary btn--sm" id="send-collab-message">Send</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Portfolio Gallery -->
+    <div id="portfolio" class="screen">
+        <div class="container">
+            <div class="portfolio-header">
+                <h2>Portfolio Gallery</h2>
+                <p>Showcase your professional creations</p>
+                <button class="btn btn--primary" id="upload-creation">Upload New Creation</button>
+            </div>
+            
+            <div class="portfolio-grid">
+                <div class="creation-card">
+                    <div class="creation-preview">
+                        <div class="preview-placeholder">🏗️</div>
+                    </div>
+                    <div class="creation-info">
+                        <h4>Mechanical Assembly</h4>
+                        <p>Complex gear system with bolted connections</p>
+                        <div class="creation-stats">
+                            <span>15 parts</span>
+                            <span>12 bolts</span>
+                            <span>3 materials</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="creation-card">
+                    <div class="creation-preview">
+                        <div class="preview-placeholder">🏛️</div>
+                    </div>
+                    <div class="creation-info">
+                        <h4>Architectural Model</h4>
+                        <p>Modern building with structural elements</p>
+                        <div class="creation-stats">
+                            <span>25 parts</span>
+                            <span>8 materials</span>
+                            <span>Collaborative</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading" class="loading-screen hidden">
+        <div class="loader">
+            <div class="loader-cube"></div>
+            <p>Loading Professional 3D Studio...</p>
+            <div id="loading-progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <div class="progress-text" id="progress-text">Initializing...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="tutorial-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3>Tool Tutorial</h3>
+            <div id="tutorial-content">
+                <!-- Tutorial content will be populated by JavaScript -->
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn--outline" id="skip-tutorial">Skip</button>
+                <button class="btn btn--primary" id="start-tutorial">Start Tutorial</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
