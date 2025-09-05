@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand-Tracking AR Video Chat</title>
+    
+    <!-- Tailwind CSS for styling the UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- A-Frame library for AR -->
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+    <!-- AR.js for A-Frame -->
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
+
+    <!-- Scaledrone signaling server client for WebRTC -->
+    <script src='https://cdn.scaledrone.com/scaledrone.min.js'></script>
+    
+    <!-- MediaPipe for Hand Tracking -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            font-family: 'Inter', sans-serif;
+        }
+        #ar-scene {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        #ui-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        #ui-container > * { pointer-events: auto; }
+        #remote-videos { display: flex; gap: 1rem; padding: 1rem; flex-wrap: wrap; }
+        .video-container {
+            position: relative;
+            width: 200px;
+            height: 150px;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            background-color: #2d3748;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+        /* Mirror all video feeds for a natural feel */
+        .video-container video { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+            transform: scaleX(-1); 
+        }
+
+        .video-label {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 0.25rem 0.5rem;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            font-size: 0.8rem;
+            text-align: center;
+        }
+        #local-video-container {
+            position: absolute;
+            bottom: 1rem;
+            right: 1rem;
+            width: 150px;
+            height: 112px;
+            cursor: move;
+            z-index: 100;
+        }
+        .control-panel { padding: 1.5rem; background: rgba(26, 32, 44, 0.8); backdrop-filter: blur(10px); border-top-left-radius: 1rem; border-top-right-radius: 1rem; }
+        .btn { padding: 0.75rem 1.5rem; border-radius: 9999px; font-weight: 600; color: white; transition: background-color 0.2s ease-in-out; display: inline-flex; align-items: center; gap: 0.5rem; }
+        .btn-primary { background-color: #4f46e5; }
+        .btn-primary:hover { background-color: #4338ca; }
+        .btn-secondary { background-color: #4a5568; }
+        .btn-secondary:hover { background-color: #2d3748; }
+        .btn-danger { background-color: #dc2626; }
+        .btn-danger:hover { background-color: #b91c1c; }
+        #login-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.7); display: flex; align-items: center;
+            justify-content: center; z-index: 200; backdrop-filter: blur(5px);
+        }
+        #hand-tracking-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0; 
+            opacity: 0; 
+            transform: scaleX(-1); 
+        }
+        .hand-bbox {
+            position: absolute;
+            z-index: 20;
+            border: 2px solid #facc15; /* Default yellow */
+            border-radius: 12px;
+            box-shadow: 0 0 15px rgba(250, 204, 21, 0.7);
+            pointer-events: none;
+            display: none;
+            transition: all 0.1s linear;
+        }
+        /* NEW: Styles for the tool labels */
+        .hand-label {
+            position: absolute;
+            z-index: 21;
+            pointer-events: none;
+            display: none;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background-color: rgba(0, 0, 0, 0.5);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            transform: translate(-100%, -100%); /* Position top-right */
+        }
+        #object-controls {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            z-index: 20;
+        }
+        #shape-panel {
+            display: none;
+            position: absolute;
+            top: 4rem;
+            right: 0;
+            background: rgba(26, 32, 44, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            display: none;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+            width: 180px;
+        }
+        .shape-btn {
+            background-color: #4a5568;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .shape-btn:hover { background-color: #2d3748; }
+        .grabbable { cursor: move; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+
+    <video id="hand-tracking-video" autoplay muted playsinline></video>
+
+    <!-- Bounding boxes and labels for hand detection feedback -->
+    <div id="hand-bbox-0" class="hand-bbox"></div>
+    <div id="hand-label-0" class="hand-label"></div>
+    <div id="hand-bbox-1" class="hand-bbox"></div>
+    <div id="hand-label-1" class="hand-label"></div>
+
+    <a-scene id="ar-scene" vr-mode-ui="enabled: false;" renderer="logarithmicDepthBuffer: true;" embedded arjs="sourceType: webcam; debugUIEnabled: false; trackingMethod: best;">
+        
+        <a-camera gps-new-camera='gpsMinDistance: 5'>
+            <a-cursor raycaster="objects: .grabbable;" visible="false"></a-cursor>
+        </a-camera>
+    </a-scene>
+
+    <div id="ui-container">
+        <div id="remote-videos"></div>
+        
+        <div id="object-controls">
+            <button id="add-object-btn" class="btn btn-secondary">Add Solid</button>
+            <div id="shape-panel">
+                <div class="shape-btn" data-shape="box">Box</div>
+                <div class="shape-btn" data-shape="sphere">Sphere</div>
+                <div class="shape-btn" data-shape="cone">Cone</div>
+                <div class="shape-btn" data-shape="cylinder">Cylinder</div>
+                <div class="shape-btn" data-shape="dodecahedron">Dodecahedron</div>
+                <div class="shape-btn" data-shape="torus">Torus</div>
+                <div class="shape-btn" data-shape="octahedron">Octahedron</div>
+                <div class="shape-btn" data-shape="tetrahedron">Tetrahedron</div>
+            </div>
+        </div>
+
+        <div id="local-video-container" class="video-container">
+            <video id="local-video" autoplay muted playsinline></video>
+            <div class="video-label">You</div>
+        </div>
+        <div id="controls-container" class="w-full flex justify-center">
+             <div class="control-panel flex items-center justify-center gap-4">
+                 <button id="mute-btn" class="btn btn-secondary"><span>Mute</span></button>
+                 <button id="video-btn" class="btn btn-secondary"><span>Stop Video</span></button>
+                 <button id="leave-btn" class="btn btn-danger"><span>Leave</span></button>
+            </div>
+        </div>
+    </div>
+
+    <div id="login-modal">
+        <div class="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm text-center">
+            <h1 class="text-3xl font-bold mb-2">AR Video Chat</h1>
+            <p class="text-gray-400 mb-6">Enter a room name to join or create a call.</p>
+            <form id="login-form">
+                <input id="room-name-input" type="text" placeholder="e.g., project-meeting" class="w-full bg-gray-700 text-white p-3 rounded-lg mb-4 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500" required>
+                <button type="submit" class="w-full btn btn-primary justify-center">Join AR Session</button>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginModal = document.getElementById('login-modal');
+            const loginForm = document.getElementById('login-form');
+            const roomNameInput = document.getElementById('room-name-input');
+            const localVideo = document.getElementById('local-video');
+            const handTrackingVideo = document.getElementById('hand-tracking-video');
+            const remoteVideos = document.getElementById('remote-videos');
+            const sceneEl = document.querySelector('a-scene');
+            const handBboxes = [document.getElementById('hand-bbox-0'), document.getElementById('hand-bbox-1')];
+            const handLabels = [document.getElementById('hand-label-0'), document.getElementById('hand-label-1')];
+            
+            let localStream;
+            let scaledrone;
+            let room;
+            const peerConnections = {};
+            const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+            const SCALEDRONE_CHANNEL_ID = 'DbBoZrpL1wOudgdq';
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+            let spawnedObjects = []; 
+
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const roomName = roomNameInput.value.trim();
+                if (!roomName) return;
+                
+                try {
+                    const constraints = { video: { width: 640, height: 480 }, audio: true };
+                    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    localVideo.srcObject = localStream;
+                    handTrackingVideo.srcObject = localStream; 
+
+                    loginModal.style.display = 'none';
+                    
+                    initializeSignaling(roomName);
+                    initializeHandTracking();
+                    initializeObjectSpawner();
+
+                } catch (error) {
+                    console.error('Error accessing media devices.', error);
+                    alert('Could not access your camera/mic. Please check permissions.');
+                }
+            });
+            
+            function initializeHandTracking() {
+                const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+                hands.setOptions({
+                    maxNumHands: 2,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.7,
+                    minTrackingConfidence: 0.7
+                });
+                hands.onResults(onHandResults);
+
+                const camera = new Camera(handTrackingVideo, {
+                    onFrame: async () => await hands.send({image: handTrackingVideo}),
+                    width: 640, height: 480
+                });
+                camera.start();
+            }
+
+            function isVictoryGesture(landmarks) {
+                if (!landmarks) return false;
+                const indexFingerUp = landmarks[8].y < landmarks[6].y;
+                const middleFingerUp = landmarks[12].y < landmarks[10].y;
+                const ringFingerDown = landmarks[16].y > landmarks[14].y;
+                const pinkyFingerDown = landmarks[20].y > landmarks[18].y;
+                const thumbTucked = landmarks[4].x > landmarks[5].x && landmarks[4].x > landmarks[17].x;
+                return indexFingerUp && middleFingerUp && ringFingerDown && pinkyFingerDown && thumbTucked;
+            }
+
+            function isDeleteGesture(landmarks) {
+                if (!landmarks) return false;
+                const indexFingerUp = landmarks[8].y < landmarks[5].y;
+                const middleFingerDown = landmarks[12].y > landmarks[9].y;
+                const ringFingerDown = landmarks[16].y > landmarks[13].y;
+                const pinkyFingerDown = landmarks[20].y > landmarks[17].y;
+                return indexFingerUp && middleFingerDown && ringFingerDown && pinkyFingerDown;
+            }
+
+            function isRotateGesture(landmarks) {
+                if (!landmarks) return false;
+                const indexFingerUp = landmarks[8].y < landmarks[6].y;
+                const pinkyFingerUp = landmarks[20].y < landmarks[18].y;
+                const middleFingerDown = landmarks[12].y > landmarks[10].y;
+                const ringFingerDown = landmarks[16].y > landmarks[14].y;
+                return indexFingerUp && pinkyFingerUp && middleFingerDown && ringFingerDown;
+            }
+
+            function onHandResults(results) {
+                updateObjectBounds(); 
+                handBboxes.forEach((box, i) => {
+                    box.style.display = 'none';
+                    handLabels[i].style.display = 'none';
+                });
+
+                if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+                     checkCollisions(results.multiHandLandmarks); 
+                     return;
+                }
+                
+                results.multiHandLandmarks.forEach((landmarks, index) => {
+                    if (index >= 2) return;
+
+                    const bboxEl = handBboxes[index];
+                    const labelEl = handLabels[index];
+                    const PALM_LANDMARKS = [0, 1, 5, 9, 13, 17];
+                    let minX = 1.0, maxX = 0.0, minY = 1.0, maxY = 0.0;
+
+                    PALM_LANDMARKS.forEach(landmarkIndex => {
+                        const lm = landmarks[landmarkIndex];
+                        if (lm) {
+                            minX = Math.min(minX, lm.x);
+                            maxX = Math.max(maxX, lm.x);
+                            minY = Math.min(minY, lm.y);
+                            maxY = Math.max(maxY, lm.y);
+                        }
+                    });
+
+                    if (minX === 1.0) return;
+                    
+                    const isDelete = isDeleteGesture(landmarks);
+                    const isVictory = isVictoryGesture(landmarks);
+                    const isRotate = isRotateGesture(landmarks);
+                    
+                    let toolName = 'PUSH';
+                    let toolColor = '#facc15'; // Yellow
+
+                    if (isDelete) {
+                        toolName = 'DELETE';
+                        toolColor = '#ef4444'; // Red
+                    } else if (isVictory) {
+                        toolName = 'DISSECT';
+                        toolColor = '#22c55e'; // Green
+                    } else if (isRotate) {
+                        toolName = 'ROTATE';
+                        toolColor = '#3b82f6'; // Blue
+                    }
+
+                    bboxEl.style.borderColor = toolColor;
+                    bboxEl.style.boxShadow = `0 0 15px ${toolColor}b3`;
+                    
+                    labelEl.textContent = toolName;
+                    labelEl.style.color = toolColor;
+
+                    const bounds = {
+                        x: minX * screenWidth, y: minY * screenHeight,
+                        width: (maxX - minX) * screenWidth, height: (maxY - minY) * screenHeight
+                    };
+
+                    bboxEl.style.left = `${bounds.x - 10}px`;
+                    bboxEl.style.top = `${bounds.y - 10}px`;
+                    bboxEl.style.width = `${bounds.width + 20}px`;
+                    bboxEl.style.height = `${bounds.height + 20}px`;
+                    bboxEl.style.display = 'block';
+
+                    labelEl.style.left = `${bounds.x + bounds.width + 10}px`;
+                    labelEl.style.top = `${bounds.y - 10}px`;
+                    labelEl.style.display = 'block';
+                });
+
+                checkCollisions(results.multiHandLandmarks);
+            }
+
+            function updateObjectBounds() {
+                const camera = sceneEl.camera;
+                const vector = new THREE.Vector3();
+                spawnedObjects.forEach(obj => {
+                    if (!obj.el || !obj.el.object3D) return;
+                    const mesh = obj.el.object3D;
+                    mesh.updateWorldMatrix(true, false);
+                    const box3 = new THREE.Box3().setFromObject(mesh);
+                    const center = box3.getCenter(new THREE.Vector3());
+                    vector.copy(center).project(camera);
+                    const size = box3.getSize(new THREE.Vector3());
+                    const worldPos = new THREE.Vector3();
+                    mesh.getWorldPosition(worldPos);
+                    const distance = camera.position.distanceTo(worldPos);
+                    const apparentWidth = (size.x / distance) * 450;
+                    const apparentHeight = (size.y / distance) * 450;
+                    obj.bounds = {
+                        x: ((vector.x + 1) / 2) * screenWidth - apparentWidth / 2,
+                        y: ((-vector.y + 1) / 2) * screenHeight - apparentHeight / 2,
+                        width: apparentWidth,
+                        height: apparentHeight
+                    };
+                });
+            }
+
+            function checkCollisions(handLandmarks) {
+                const handData = [];
+                let objectsToDelete = [];
+                const now = Date.now();
+                const interactionCooldown = 300; 
+
+                if (handLandmarks) {
+                    handLandmarks.forEach(landmarks => {
+                        const PALM_LANDMARKS = [0, 1, 5, 9, 13, 17];
+                        let minX = 1.0, maxX = 0.0, minY = 1.0, maxY = 0.0;
+                        PALM_LANDMARKS.forEach(idx => {
+                            const lm = landmarks[idx];
+                            if(lm) {
+                               minX = Math.min(minX, lm.x); maxX = Math.max(maxX, lm.x);
+                               minY = Math.min(minY, lm.y); maxY = Math.max(maxY, lm.y);
+                            }
+                        });
+                        if (minX !== 1.0) {
+                            handData.push({
+                                bounds: {
+                                    x: minX * screenWidth, y: minY * screenHeight,
+                                    width: (maxX - minX) * screenWidth, height: (maxY - minY) * screenHeight
+                                },
+                                isVictory: isVictoryGesture(landmarks),
+                                isDelete: isDeleteGesture(landmarks),
+                                isRotate: isRotateGesture(landmarks)
+                            });
+                        }
+                    });
+                }
+                
+                handData.forEach(hand => {
+                    spawnedObjects.forEach((obj) => {
+                         if (!obj.el.getAttribute('visible')) return;
+
+                        if (hand.bounds.x < obj.bounds.x + obj.bounds.width &&
+                            hand.bounds.x + hand.bounds.width > obj.bounds.x &&
+                            hand.bounds.y < obj.bounds.y + obj.bounds.height &&
+                            hand.bounds.y + hand.bounds.height > obj.bounds.y)
+                        {
+                            const cooldownCheck = now - (obj.lastInteractionTime || 0) > interactionCooldown;
+
+                            if (hand.isDelete && cooldownCheck) {
+                                objectsToDelete.push(obj);
+                                obj.lastInteractionTime = now;
+                            } else if (hand.isVictory && !obj.dissected && obj.type in getHalvesForShape() && cooldownCheck) {
+                                dissectObject(obj);
+                                obj.lastInteractionTime = now;
+                            } else if (hand.isRotate && cooldownCheck) {
+                                toggleObjectRotation(obj);
+                                obj.lastInteractionTime = now;
+                            } else if (!hand.isDelete && !hand.isVictory && !hand.isRotate) {
+                                // Push logic only if no other gesture is active
+                                const overlapX = Math.min(hand.bounds.x + hand.bounds.width, obj.bounds.x + obj.bounds.width) - Math.max(hand.bounds.x, obj.bounds.x);
+                                const overlapY = Math.min(hand.bounds.y + hand.bounds.height, obj.bounds.y + obj.bounds.height) - Math.max(hand.bounds.y, obj.bounds.y);
+                                const handCenterX = hand.bounds.x + hand.bounds.width / 2;
+                                const mesh = obj.el.object3D;
+                                const distance = sceneEl.camera.position.distanceTo(mesh.getWorldPosition(new THREE.Vector3()));
+                                const worldPushFactor = (distance / 500); 
+                                let pushX = 0, pushY = 0;
+                                if (overlapX < overlapY) {
+                                    pushX = (handCenterX < obj.bounds.x + obj.bounds.width / 2) ? overlapX : -overlapX;
+                                } else {
+                                    pushY = (hand.bounds.y + hand.bounds.height/2 < obj.bounds.y + obj.bounds.height/2) ? -overlapY : overlapY;
+                                }
+                                const currentPosition = mesh.position;
+                                obj.el.setAttribute('position', {
+                                    x: currentPosition.x + (pushX * worldPushFactor),
+                                    y: currentPosition.y + (pushY * worldPushFactor),
+                                    z: currentPosition.z
+                                });
+                            }
+                        }
+                    });
+                });
+                
+                if (objectsToDelete.length > 0) {
+                    objectsToDelete.forEach(obj => {
+                        if (obj.el && obj.el.parentNode) {
+                            obj.el.parentNode.removeChild(obj.el);
+                        }
+                    });
+                    spawnedObjects = spawnedObjects.filter(obj => !objectsToDelete.includes(obj));
+                }
+            }
+
+            function toggleObjectRotation(obj) {
+                if (!obj.el) return;
+                if (obj.isRotating) {
+                    obj.el.emit('stop-rotation');
+                    obj.isRotating = false;
+                } else {
+                    obj.el.emit('start-rotation');
+                    obj.isRotating = true;
+                }
+            }
+            
+            function dissectObject(objectToDissect) {
+                if (objectToDissect.dissected) return;
+                
+                objectToDissect.dissected = true;
+                if (objectToDissect.isRotating) {
+                    objectToDissect.el.emit('stop-rotation');
+                }
+                objectToDissect.el.setAttribute('visible', false);
+                objectToDissect.el.classList.remove('grabbable'); 
+
+                const originalPos = objectToDissect.el.getAttribute('position');
+                const originalMat = objectToDissect.el.getAttribute('material');
+                const originalRot = objectToDissect.el.getAttribute('rotation');
+                createHalves(objectToDissect.type, originalPos, originalMat, originalRot);
+            }
+
+            function createHalves(type, pos, mat, rot) {
+                 const halves = getHalvesForShape(type);
+                 if (!halves) return;
+
+                 const half1 = document.createElement('a-entity');
+                 const half2 = document.createElement('a-entity');
+                 
+                 [half1, half2].forEach((half, i) => {
+                    half.classList.add('grabbable');
+                    half.setAttribute('geometry', halves.geometry);
+                    half.setAttribute('material', `shader: standard; color: ${mat.color}; roughness: ${mat.roughness}; metalness: ${mat.metalness}`);
+                    half.setAttribute('position', pos);
+                    half.setAttribute('rotation', rot);
+
+                    if (i === 1 && halves.rotation2) {
+                        const halfEuler = half.object3D.rotation;
+                        halfEuler.x += THREE.MathUtils.degToRad(halves.rotation2.x || 0);
+                        halfEuler.y += THREE.MathUtils.degToRad(halves.rotation2.y || 0);
+                        halfEuler.z += THREE.MathUtils.degToRad(halves.rotation2.z || 0);
+                    }
+                    
+                    const offset = i === 0 ? halves.offset1 : halves.offset2;
+                    half.setAttribute('animation', {
+                        property: 'position',
+                        to: `${pos.x + offset.x} ${pos.y + offset.y} ${pos.z + offset.z}`,
+                        dur: 500,
+                        easing: 'easeOutQuad'
+                    });
+                    
+                    half.setAttribute('animation__rotate', 'property: rotation; to: 0 360 0; loop: true; dur: 10000; easing: linear; startEvents: start-rotation; pauseEvents: stop-rotation');
+
+                    spawnedObjects.push({ el: half, bounds: {}, dissected: true, type: 'half', isRotating: false, lastInteractionTime: 0 });
+                    sceneEl.appendChild(half);
+                 });
+            }
+
+            function getHalvesForShape(type) {
+                const GEO = {
+                    box: { 
+                        geometry: 'primitive: box; width: 0.2; height: 0.4; depth: 0.4', 
+                        offset1: {x: -0.12, y: 0, z: 0}, offset2: {x: 0.12, y: 0, z: 0} 
+                    },
+                    sphere: { 
+                        geometry: 'primitive: sphere; radius: 0.25; thetaLength: 180;', 
+                        offset1: {x: 0, y: 0, z: 0}, offset2: {x: 0, y: 0, z: 0}, 
+                        rotation2: { x:0, y: 180, z:0 } 
+                    },
+                    cylinder: { 
+                        geometry: 'primitive: cylinder; radius: 0.2; height: 0.5; thetaLength: 180;', 
+                        offset1: {x: -0.05, y: 0, z: 0}, offset2: {x: 0.05, y: 0, z: 0}, 
+                        rotation2: { x:0, y: 180, z:0 }
+                    },
+                    cone: { 
+                        geometry: 'primitive: cone; radiusBottom: 0.3; radiusTop: 0.01; height: 0.5; thetaLength: 180;', 
+                        offset1: {x: -0.05, y: 0, z: 0}, offset2: {x: 0.05, y: 0, z: 0}, 
+                        rotation2: { x:0, y: 180, z:0 }
+                    },
+                    torus: {
+                        geometry: 'primitive: torus; radius: 0.3; radiusTubular: 0.05; arc: 180;',
+                        offset1: {x: 0, y: 0, z: 0}, offset2: {x: 0, y: 0, z: 0}, 
+                        rotation2: { x:0, y: 0, z:180 }
+                    }
+                };
+                return type ? GEO[type] : GEO;
+            }
+
+
+            function initializeObjectSpawner() {
+                const addBtn = document.getElementById('add-object-btn');
+                const shapePanel = document.getElementById('shape-panel');
+                let grabbedEl = null;
+                let dragDistance = 0; 
+
+                addBtn.addEventListener('click', () => {
+                    shapePanel.style.display = shapePanel.style.display === 'grid' ? 'none' : 'grid';
+                });
+
+                shapePanel.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('shape-btn')) {
+                        const shape = e.target.dataset.shape;
+                        spawnShape(shape);
+                        shapePanel.style.display = 'none';
+                    }
+                });
+
+                sceneEl.addEventListener('mousedown', (e) => {
+                    if (e.detail.intersectedEl && e.detail.intersectedEl.classList.contains('grabbable')) {
+                        grabbedEl = e.detail.intersectedEl;
+                        dragDistance = grabbedEl.object3D.position.distanceTo(sceneEl.camera.position);
+                    }
+                });
+                
+                window.addEventListener('mouseup', () => {
+                    grabbedEl = null;
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if (!grabbedEl) return;
+                    const mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+                    const mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+                    const vector = new THREE.Vector3(mouseX, mouseY, 0.5);
+                    const camera = sceneEl.camera;
+                    vector.unproject(camera);
+                    const dir = vector.sub(camera.position).normalize();
+                    const newPosition = camera.position.clone().add(dir.multiplyScalar(dragDistance));
+                    grabbedEl.setAttribute('position', newPosition);
+                });
+            }
+
+            function spawnShape(shape) {
+                const el = document.createElement('a-entity');
+                el.classList.add('grabbable');
+                
+                const shapeProps = {
+                    box: 'primitive: box; width: 0.4; height: 0.4; depth: 0.4',
+                    sphere: 'primitive: sphere; radius: 0.25',
+                    cone: 'primitive: cone; radiusBottom: 0.3; radiusTop: 0.01; height: 0.5',
+                    cylinder: 'primitive: cylinder; radius: 0.2; height: 0.5',
+                    dodecahedron: 'primitive: dodecahedron; radius: 0.3',
+                    torus: 'primitive: torus; radius: 0.3; radiusTubular: 0.05',
+                    octahedron: 'primitive: octahedron; radius: 0.3',
+                    tetrahedron: 'primitive: tetrahedron; radius: 0.3',
+                };
+                
+                el.setAttribute('geometry', shapeProps[shape] || shapeProps.box);
+                el.setAttribute('animation__rotate', 'property: rotation; to: 0 360 0; loop: true; dur: 10000; easing: linear; startEvents: start-rotation; pauseEvents: stop-rotation');
+                const randomColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+                el.setAttribute('material', `shader: standard; color: ${randomColor}; roughness: 0.6; metalness: 0.2`);
+                
+                const cameraEl = sceneEl.camera.el;
+                const worldPos = new THREE.Vector3();
+                cameraEl.object3D.getWorldPosition(worldPos);
+                const worldDir = new THREE.Vector3();
+                cameraEl.object3D.getWorldDirection(worldDir);
+                const spawnPosition = worldPos.add(worldDir.multiplyScalar(-2.5));
+                el.setAttribute('position', spawnPosition);
+                
+                spawnedObjects.push({ el: el, bounds: {}, dissected: false, type: shape, isRotating: false, lastInteractionTime: 0 });
+                sceneEl.appendChild(el);
+            }
+            
+            // --- WebRTC + Signaling ---
+            function initializeSignaling(roomName) {
+                scaledrone = new Scaledrone(SCALEDRONE_CHANNEL_ID, { data: { name: `User_${Math.random().toString(36).substr(2, 5)}` } });
+                scaledrone.on('open', error => {
+                    if (error) return console.error(error);
+                    room = scaledrone.subscribe(`observable-${roomName}`);
+                    room.on('open', err => err && console.error(err));
+                    room.on('members', members => startWebRTCTransmission(members.length >= 2));
+                });
+                scaledrone.on('data', (message, member) => {
+                    if (member && member.id === scaledrone.clientId) return;
+                    handleSignalingData(message, member.id);
+                });
+            }
+
+            function startWebRTCTransmission(isOfferer) {
+                 room.on('members', members => {
+                    members.forEach(member => {
+                        if (member.id !== scaledrone.clientId && !peerConnections[member.id]) {
+                            createPeerConnection(member.id, isOfferer);
+                        }
+                    });
+                });
+                room.on('member_join', member => {
+                    if (!peerConnections[member.id]) createPeerConnection(member.id, true);
+                });
+            }
+
+            function createPeerConnection(memberId, isOfferer) {
+                const pc = new RTCPeerConnection(config);
+                peerConnections[memberId] = pc;
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+                pc.onicecandidate = e => e.candidate && sendMessage({ 'candidate': e.candidate }, memberId);
+                if (isOfferer) {
+                    pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => sendMessage({ 'sdp': pc.localDescription }, memberId));
+                }
+                pc.ontrack = e => {
+                    if (!document.getElementById(`video-${memberId}`)) createRemoteVideoElement(memberId, e.streams[0]);
+                };
+                pc.onconnectionstatechange = () => {
+                    if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) removeRemoteVideoElement(memberId);
+                };
+            }
+
+            function handleSignalingData(message, memberId) {
+                const pc = peerConnections[memberId];
+                if (!pc) return;
+                if (message.sdp) {
+                    pc.setRemoteDescription(new RTCSessionDescription(message.sdp)).then(() => {
+                        if (message.sdp.type === 'offer') {
+                            pc.createAnswer().then(a => pc.setLocalDescription(a)).then(() => sendMessage({ 'sdp': pc.localDescription }, memberId));
+                        }
+                    });
+                } else if (message.candidate) {
+                    pc.addIceCandidate(new RTCIceCandidate(message.candidate)).catch(e => console.error("Error adding ICE candidate", e));
+                }
+            }
+            
+            function sendMessage(message, memberId) { scaledrone.publish({ room: room.name, message, target: memberId }); }
+
+            function createRemoteVideoElement(memberId, stream) {
+                const container = document.createElement('div');
+                container.id = `container-${memberId}`;
+                container.className = 'video-container';
+                const video = document.createElement('video');
+                video.id = `video-${memberId}`;
+                video.autoplay = true;
+                video.playsInline = true;
+                video.srcObject = stream;
+                const label = document.createElement('div');
+                label.className = 'video-label';
+                label.textContent = `User ${memberId.substring(0, 5)}`;
+                container.appendChild(video);
+                container.appendChild(label);
+                remoteVideos.appendChild(container);
+            }
+
+            function removeRemoteVideoElement(memberId) {
+                const el = document.getElementById(`container-${memberId}`);
+                if (el) el.remove();
+                if (peerConnections[memberId]) {
+                    peerConnections[memberId].close();
+                    delete peerConnections[memberId];
+                }
+            }
+            
+            document.getElementById('mute-btn').addEventListener('click', () => { localStream.getAudioTracks()[0].enabled = !localStream.getAudioTracks()[0].enabled; });
+            document.getElementById('video-btn').addEventListener('click', () => { localStream.getVideoTracks()[0].enabled = !localStream.getVideoTracks()[0].enabled; });
+            document.getElementById('leave-btn').addEventListener('click', () => window.location.reload());
+
+            const localVideoContainer = document.getElementById('local-video-container');
+            let isDragging = false, offsetX, offsetY;
+            localVideoContainer.onmousedown = e => { isDragging = true; offsetX = e.clientX - localVideoContainer.offsetLeft; offsetY = e.clientY - localVideoContainer.offsetTop; };
+            document.onmousemove = e => { if (isDragging) { localVideoContainer.style.left = `${e.clientX - offsetX}px`; localVideoContainer.style.top = `${e.clientY - offsetY}px`; localVideoContainer.style.right = 'auto'; localVideoContainer.style.bottom = 'auto'; }};
+            document.onmouseup = () => isDragging = false;
+        });
+    </script>
+</body>
+</html>
